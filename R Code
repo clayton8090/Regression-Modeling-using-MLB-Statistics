@@ -1,0 +1,149 @@
+library(MASS)   # For fitting the Poisson regression model
+library(car)    # For the stepAIC function
+library(caret)
+library(corrplot)
+library(reshape2)
+library(DataExplorer)
+#inserting data and naming it data 
+data = `baseballdatafinal`
+#practice 3 variable manual model poison regression 
+#model <- glm(r_run ~ player_age + b_ab + b_total_hits, family = poisson(link = "log"), data = data)
+#making a corr matrix 
+# Select independent variables
+vars <- data[, c("player_age" , "b_ab" , "b_total_hits" , "b_total_pa", "b_single", "b_double",  "b_triple", "b_home_run", "b_strikeout" , "b_walk" , "b_k_percent" , "b_bb_percent" , "batting_avg" , "slg_percent" , "on_base_percent" , "on_base_plus_slg" , "woba" , "r_run" )]
+
+# Calculate correlation matrix
+cor_matrix <- cor(vars)
+
+# Plot correlation matrix
+corrplot(cor_matrix, type = "upper", method = "color", 
+         tl.col = "black", tl.srt = 45, tl.cex = 0.8, 
+         addCoef.col = "black", addCoefasPercent = TRUE)
+
+create_report(baseballdatafinal)
+#Below models are made with all variables from data sets 
+#Every Variable Model 
+base_model <- glm(r_run ~ player_age + b_ab + b_total_hits + b_total_pa + b_single + b_double + b_triple + b_home_run + b_strikeout + b_walk + b_k_percent + b_bb_percent + batting_avg + slg_percent + on_base_percent + on_base_plus_slg + woba, family = poisson(link = "log"), data = data)
+summary(base_model)
+
+# AIC Building Form
+step_model1 <- stepAIC(base_model, direction = "both")
+summary(step_model1)
+predict(step_model1,type="response")
+
+# BIC model building form. 
+step_model2 <- stepAIC(base_model, direction = "both",k=log(1112))
+summary(step_model2)
+predict(step_model2,type="response")
+
+# split data and create testing and training set
+
+#below models are made after a corr table was made and ratio based stats, and the b_ab is removed 
+base_model2 <- glm(r_run ~ player_age + b_total_hits + b_total_pa + b_single + b_double + b_triple + b_home_run + b_strikeout + b_walk, family = poisson(link = "log"), data = data)
+summary(base_model2)
+#step aic model made with base model corr table truncated variables 
+step_model3 <- stepAIC(base_model2, direction = "both")
+summary(step_model3)
+predict(step_model3,type="response")
+#step bic model made with base model with corr table truncated Variables  
+step_model4 <- stepAIC(base_model2, direction = "both",k=log(1112))
+summary(step_model4)
+predict(step_model4,type="response")
+#anova of models 
+anova(step_model1,step_model2)
+
+
+set.seed(222) # set seed
+
+# creates a 80% selection for training from the dataset
+
+train_index <-createDataPartition(data$r_run, p=0.80, list=F)
+
+
+
+data_train<-data[train_index,] # select training set
+
+data_test<-data[-train_index,] # select testing set
+#predicting training data
+attach(data_train)
+#model 1 training 
+train_step_model1 <- glm(step_model1, data = data_train)
+summary(train_step_model1)
+#model 2 Training
+train_step_model2 <- glm(step_model2, data = data_train)
+summary(train_step_model2)
+#model 3 training
+train_step_model3 <- glm(step_model3, data = data_train)
+summary(train_step_model3)
+#model 4 training
+train_step_model4 <- glm(step_model4, data = data_train)
+summary(train_step_model4)
+detach(data_train)
+attach(data_test)
+#predictions for model 1
+predictions_M1=predict(train_step_model1,newdata = data_test)
+summary(predictions_M1)
+#prediction for model 2
+predictions_M2=predict(train_step_model2,newdata= data_test)
+summary(predictions_M2)
+#predictions for model 3 
+predictions_M3=predict(train_step_model3,newdata= data_test)
+summary(predictions_M3)
+#prediction for model 4 
+predictions_M4=predict(train_step_model4,newdata= data_test)
+summary(predictions_M4)
+
+
+detach(data_test)
+# comparing sqrt (MSE) of all models 
+MSE_step_model1=sum((data_test$r_run-predictions_M1)^2)/length(data_test$woba)
+sqrtMSE1 <- sqrt(MSE_step_model1)
+
+MSE_step_model2=sum((data_test$r_run-predictions_M2)^2)/length(data_test$woba)
+sqrtMSE2 <- sqrt(MSE_step_model2)
+
+MSE_step_model3=sum((data_test$r_run-predictions_M3)^2)/length(data_test$woba)
+sqrtMSE3 <- sqrt(MSE_step_model3)
+
+MSE_step_model4=sum((data_test$r_run-predictions_M4)^2)/length(data_test$woba)
+sqrtMSE4 <- sqrt(MSE_step_model4)
+#BIC test for model comparison to make penalize model complexity which isn't taken into account in MSE testing 
+#creating the logLik for each model 
+log_likelihood1 <- logLik(step_model1)
+log_likelihood2 <- logLik(step_model2)
+log_likelihood3 <- logLik(step_model3)
+log_likelihood4 <- logLik(step_model4)
+
+# Getting the parameters  
+numpara1 <- length(coefficients(step_model1))
+numpara2 <- length(coefficients(step_model2))
+numpara3 <- length(coefficients(step_model3))
+numpara4 <- length(coefficients(step_model4))
+# calculate BIC get n value 
+n <- nrow(data)
+BIC1 <- -2*log_likelihood1 + numpara1 *log(n)
+BIC2 <- -2*log_likelihood2 + numpara2 *log(n)
+BIC3 <- -2*log_likelihood3 + numpara3 *log(n)
+BIC4 <- -2*log_likelihood4 + numpara4 *log(n)
+#output of BIC
+BIC1
+BIC2
+BIC3
+BIC4
+
+# create a base test mean of r runs 
+mean_r_run <- mean(data$r_run)
+me# create actual r_run values
+actual_r_run <- data_test$r_run
+# create a scatter plot of predicted vs actual values
+
+plot(predictions_M1, actual_r_run, xlab = "Predicted r_run", ylab = "Actual r_run", main = "Predicted vs Actual r_run model 1")
+plot(predictions_M2, actual_r_run, xlab = "Predicted r_run", ylab = "Actual r_run", main = "Predicted vs Actual r_run model 2")
+plot(predictions_M3, actual_r_run, xlab = "Predicted r_run", ylab = "Actual r_run", main = "Predicted vs Actual r_run model 3")
+plot(predictions_M4, actual_r_run, xlab = "Predicted r_run", ylab = "Actual r_run", main = "Predicted vs Actual r_run model 4")
+abline(h = mean_r_run, col = "red")
+
+#creating run to single plot to show that a=they are not actually negatively correlated
+
+plot(x = data$b_single, y = data$r_run, main = "Singles vs Runs", 
+     xlab = "Singles", ylab = "Runs", col = "blue", pch = 20)
